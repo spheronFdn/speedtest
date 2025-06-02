@@ -1,0 +1,67 @@
+version: 2.1
+
+# Pipeline parameters for manual triggers
+parameters:
+  deploy_branch:
+    type: string
+    default: ""
+
+orbs:
+  docker: circleci/docker@2.8.0
+
+commands:
+  dockerx-build-push:
+    description: "Build and push image"
+    steps:
+      - run:
+          name: Build and Push Multi-Arch Docker Image
+          command: |
+            docker buildx create --use
+            docker buildx build --push --platform linux/amd64,linux/arm64 -t "${IMAGE}:${TAG}" .
+
+jobs:
+  build-push-dev:
+    environment:
+      IMAGE: "spheronnetwork/unstable-speedtest"
+      TAG: "latest"
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - docker/check
+      - setup_remote_docker
+      - dockerx-build-push
+  build-push-prod:
+    environment:
+      IMAGE: "spheronnetwork/speedtest"
+      TAG: "latest"
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - docker/check
+      - setup_remote_docker
+      - dockerx-build-push
+workflows:
+  build_and_deploy:
+    jobs:
+      - build-push-dev:
+          filters:
+            branches:
+              only:
+                - dev
+          context: develop
+      - build-push-prod:
+          filters:
+            branches:
+              only: master
+          context: production
+          
+  # Manual workflow that can be triggered for any branch
+  manual_deploy:
+    jobs:
+      - build-push-dev:
+          context: develop
+          filters:
+            branches:
+              only: << pipeline.parameters.deploy_branch >>
